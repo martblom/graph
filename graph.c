@@ -1,33 +1,34 @@
-/************************************************************************************/
-/************************************************************************************/
-/** graph.c																		   **/
-/** A simple terminal graph drawer												   **/
-/** author: 	Martin Blom														   **/
-/** 			Martin.Blom@kau.se												   **/
-/** version: 	1.0 															   **/
-/** date:		September 20, 2017												   **/
-/************************************************************************************/
-/************************************************************************************/
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <float.h>
-#include <ctype.h>
-#include <math.h>
-#define DEBUG 0								// debug flag
-#define MEMMAX 262144						// maximum memory allowed
-#define WMAX 1000							// maximum width of graph
-#define HMAX 500							// maximum height of graph
-#define FBUFMAX 20							// size of single float buffer
+/************************************************************************************
+graph	- A simple terminal data visualizer									   	
+Copyright (C) 2017 	Martin Blom
+					e-mail: Martin.Blom@kau.se
+					
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ 	version: 	1.0 															   	
+ 	date:		September 20, 2017												   	
+*************************************************************************************/
+#include "graph.h"
 static const char LEGAL[] = "0123456789.-";	// legal characters in a float
-static int SCREEN_HEIGHT = 24;				// screen height
-static int SCREEN_WIDTH = 105;				// screen width
+static int SCREEN_HEIGHT = 17;				// screen height
+static int SCREEN_WIDTH = 69;				// screen width
 static float maxval=FLT_MIN;				// maximum value, used for y-scaling
 static float minval=FLT_MAX;				// minimum value, used for y-scaling
 static float* buffer=NULL;					// pointer to buffer containing data values
 static int buf_size=0;						// size of buffer;
 static char stylechar = '*';				// default data point character
-
+static int YMARGIN = 4;						// size of margin left of y-axis
 /************************************************************************************/
 /* status and error messages														*/
 /************************************************************************************/
@@ -38,19 +39,12 @@ static void print_data(float* buf)
 		printf("buf[%d]=%f, ", i,buf[i]);
 	printf("\n");
 }
-static void usage()
-{
-	printf("usage:\tgraph [-sstyle] [-xsize] [-ysize] file\n");
-	printf("\tstyle - (a)sterisk (d)dash (p)eriod]\n");
-	printf("\t0 < xsize < %d, 0 < ysize < %d\n", WMAX, HMAX);
-	printf("\tfile should contain whitespace-separated float values\n");
-}
-static void error()
+void error()
 {
 	usage();
 	exit(-1);
 }
-static void merror()
+void merror()
 {
 	printf("You have tried to input a file with too many values.\n");
 	printf("Unless you have an incredibly big terminal window, the precision\n");
@@ -60,53 +54,30 @@ static void merror()
 	printf("Either way, it won't work, I quit!\n");
 	exit(-1);
 }
-static void serror(char* msg)
+void serror(char* msg, int size)
 {
-	printf("Size error: %s\n", msg);
+	printf("Size error (%d): %s\n", size, msg);
 	error();
 }
-static void f_error(char* filename, char* msg)
+void f_error(char* filename, char* msg)
 {
 	printf("File error in %s: %s\n", filename, msg);
 	error();
 }
-static void derror()
+void derror()
 {
 	printf("Data error in file, not a float\n");
-}
-/************************************************************************************/
-/* squeeze:		compresses buffer to fit within output buffer, using averages		*/
-/* parameters: 	out_buf 		output buffer										*/
-/* parameters: 	desired_size	size of output buffer								*/
-/* returns: 	ratio between # of data points in file and desired_size				*/
-/************************************************************************************/
-static float squeeze(float* out_buf, int desired_size)
-{
-	int ratio = buf_size / desired_size;
-	float average;
-	int i, k, m=0;
-	if(DEBUG)
-		printf("buf_size=%d, des_size=%d, ratio=%d\n", buf_size, desired_size, ratio);
-	for(i=0; i<buf_size; i+=ratio)
-	{
-		average = 0;
-		for(k=i;k<i+ratio;k++)
-			average += buffer[k];
-		out_buf[m++]=average/ratio;
-	}
-	if(DEBUG)printf("m=%d\n", m);
-	return ratio;
 }
 /************************************************************************************/
 /* load_csv: 	loads values from input file to buffer								*/
 /* parameter: 	infil - file pointer to file										*/
 /* parameter: 	filename - file name												*/
 /************************************************************************************/
-void load_csv(FILE* infil, char* filename)
+static void load_csv(FILE* infil, char* filename)
 {
 	int i=0, count=0, islegal=0;
 	char ctmp, buf[FBUFMAX];
-	printf("loading data...");
+	if(DEBUG)printf("loading data...");
 	rewind(infil);
 	while((ctmp=getc(infil))!=EOF)
 	{
@@ -132,18 +103,18 @@ void load_csv(FILE* infil, char* filename)
 			i=0;
 		}
 	}
-	printf("loaded %d values from file %s\n", count, filename);
+	if(DEBUG)printf("loaded %d values from file %s\n", count, filename);
 }
 /************************************************************************************/
 /* determine_filesize: 	computes # of float values in input file					*/
 /* parameter: 			infil - file pointer to data file							*/
 /* returns: 			# of float values in infil									*/
 /************************************************************************************/
-int determine_filesize(FILE* infil)
+static int determine_filesize(FILE* infil)
 {
 	int i=0, count=0, islegal=0;
 	char ctmp, buf[FBUFMAX];
-	printf("counting values...");
+	if(DEBUG)printf("counting values...");
 	while((ctmp=getc(infil))!=EOF)
 	{
 		if(strchr(LEGAL, ctmp))
@@ -165,7 +136,7 @@ int determine_filesize(FILE* infil)
 			i=0;
 		}
 	}
-	printf("found %d...", count);
+	if(DEBUG)printf("found %d...", count);
 	return count;
 }
 /************************************************************************************/
@@ -177,7 +148,7 @@ int load(char* filename)
 {
     FILE* infil;
     int i=0;
-    printf("opening file %s\n", filename);
+    if(DEBUG)printf("opening file %s\n", filename);
     infil = fopen(filename, "r");
     if(!infil)
     {
@@ -231,7 +202,7 @@ static float findmin(float* buf, int size)
 /* print_xscale: 	draws the x-axis and scale of the graph							*/
 /* parameter: 		xratio - the ratio between # of datapoints and graph width		*/
 /************************************************************************************/
-void print_xscale(float xratio)
+static void print_xscale(float xratio)
 {
 	int i;
 	printf("%4c", ' ');						// padding before x-scale lines
@@ -245,6 +216,29 @@ void print_xscale(float xratio)
 			if(i%10==0)
 				printf("%-10.0f", i*xratio);
 	printf("\n");
+}
+/************************************************************************************/
+/* squeeze:		compresses buffer to fit within output buffer, using averages		*/
+/* parameters: 	out_buf 		output buffer										*/
+/* parameters: 	desired_size	size of output buffer								*/
+/* returns: 	ratio between # of data points in file and desired_size				*/
+/************************************************************************************/
+static float squeeze(float* out_buf, int desired_size)
+{
+	float ratio = (float)buf_size / (float)desired_size;
+	float average;
+	int i, k, m=0;
+	if(DEBUG)
+		printf("buf_size=%d, des_size=%d, ratio=%f\n", buf_size, desired_size, ratio);
+	for(i=0; i<buf_size; i+=ratio)
+	{
+		average = 0;
+		for(k=i;k<i+ratio;k++)
+			average += buffer[k];
+		out_buf[m++]=average/ratio;
+	}
+	if(DEBUG)printf("m=%d\n", m);
+	return ratio;
 }
 /************************************************************************************/
 /* _graph: 		draws a graph of data values in buf of size size					*/
@@ -271,8 +265,9 @@ static void _graph(float *buf, int size)
 	printf("%4c\n",'Y');
 	for(k=0;k<=SCREEN_HEIGHT;k++)
 	{
-		if(origotime&&(maxval-step*(k))<=0){printf("%3d |", 0);} // origo indication
-		else if((k%5==0)&&(fabs(maxval-step*k)>0.5))printf("%3.0f%c|", mflag?(maxval-step*(k))/1000000:kflag?(maxval-step*(k))/1000:maxval-step*(k), mflag?'M':kflag?'k':' ');
+		if(origotime&&(maxval-step*(k))<=0)
+			{printf("%3d |", 0);}
+		else if((k%5==0)&&(fabs(maxval-step*k)>0.5)) printf("%3.0f%c|", mflag?(maxval-step*k)/1000000:kflag?(maxval-step*k)/1000:maxval-step*k, mflag?'M':kflag?'k':' ');
 		else printf("%5c", '|');
 		for(i=0 ; i<SCREEN_WIDTH&&i<size; i++)
 		{
@@ -297,7 +292,7 @@ static void _graph(float *buf, int size)
 		printf("\n");
 	}
 	print_xscale(xratio);
-	if(DEBUG)printf("maxval=%f, SCREEN_HEIGHT=%d, step=%f, xratio=%f\n", maxval, SCREEN_HEIGHT, step, xratio);
+	if(DEBUG)printf("maxval=%f, SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d, step=%f, xratio=%f\n", maxval, SCREEN_WIDTH, SCREEN_HEIGHT, step, xratio);
 }
 /************************************************************************************/
 /* graph_buf: 	draws a graph of data values in (global) buffer of size buf_size	*/
@@ -326,71 +321,34 @@ void graph(float *buf, int size)
 /* parameter: 	the letter input by the user to identify the char.					*/
 /*				if the character letter is unknown, the program exits				*/
 /************************************************************************************/
-void set_style(char* style)
+void set_style(char style)
 {
-	switch(style[2])
+	stylechar = style;
+	/*switch(style[2])
 	{
 		case 'a': stylechar='*'; break;
 		case 'd': stylechar='-'; break;
 		case 'p': stylechar='.'; break;
-		/* parameter: 	buf - the buffer containing values									*/
 		default : error();
-	}
+	}*/
 }
 /************************************************************************************/
-/* set_size:	sets the size of the graph											*/
-/* parameter: 	the argument from the command line used for size setting			*/
-/*				if the first letter in the argument is x, width is set  			*/
-/*				if the first letter in the argument is y, height is set 			*/
-/*				if the size is too large or too small, the program exits			*/
+/* set_width:	sets the width of the graph	(in characters)							*/
+/* parameter: 	s - the width														*/
+/*				if size is wrong, the program exits									*/
 /************************************************************************************/
-void set_size(char* arg)
+void set_width(int s)
 {
-	int s=0;
-	if(DEBUG)printf("set_size-->arg=%s, &(arg[1])=%s\n", arg, &(arg[1])); 
-	if((s=atoi(&(arg[2])))<0) serror("negative size");
-	if(arg[1]=='x')
-	{
-		if(s > WMAX) serror("size too large");
-		SCREEN_WIDTH = s;		
-	}
-	else
-	{
-		if(s > HMAX) serror("size too large");
-		SCREEN_HEIGHT = s;
-	}
+	if(s > WMAX) serror("width too large", s);
+	SCREEN_WIDTH = s;
 }
 /************************************************************************************/
-/* process_args:	processes the command line arguments							*/
-/* parameter: 		argc and argv as provided to main								*/
-/*					-s sets the style, -x sets width, -y sets height, -h shows help */
-/*					if the argument does not start with a hyphen, the program exits */
-/*					if the argument is unknown, the program exits					*/
+/* set_height:	sets the height of the graph	(in characters)						*/
+/* parameter: 	s - the height														*/
+/*				if size is wrong, the program exits									*/
 /************************************************************************************/
-void process_args(int argc, char** argv)
+void set_height(int s)
 {
-	int i;
-	for(i=1;i<argc-1;i++)
-	{
-		if(argv[i][0]!='-') error();
-		switch(argv[i][1])
-		{
-			case 's': set_style(argv[i]); 	break;
-			case 'x': set_size(argv[i]); 	break;
-			case 'y': set_size(argv[i]); 	break;
-			case 'h': usage(); exit(0);		break;
-			default: error();
-		}
-	}
-}
-/************************************************************************************/
-/* main																				*/
-/************************************************************************************/
-int main(int argc, char** argv)
-{
-	if(argc<2||argc>5) error();
-	process_args(argc, argv);
-	load(argv[argc-1]);
-	graph_buf();
-	return 0;
+	if(s > HMAX) serror("height too large", s);
+	SCREEN_HEIGHT = s;
 }
