@@ -1,6 +1,7 @@
 # graph
 A terminal data visualizer
-   Y
+```
+   Y
  20 |                                                    *
     |                                                     
     |                                                     
