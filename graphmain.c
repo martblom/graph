@@ -77,7 +77,11 @@ static void process_args(int argc, char** argv)
 		if(argv[i][0]!='-') error();
 		switch(argv[i][1])
 		{
-			case 's': set_style(argv[i][2]); 	break;
+			case 's': 	if(!isdigit(argv[i][2]))
+							set_style(argv[i][2]); 	
+						else
+							set_unistyle(&(argv[i][2]));
+												break;
 			case 'x': set_size(argv[i]); 		break;
 			case 'y': set_size(argv[i]); 		break;
 			case 'l': print_welcome();			break;
@@ -92,7 +96,7 @@ static void process_args(int argc, char** argv)
 int main(int argc, char** argv)
 {
 	if(argc<2||argc>5) error();
-	printf("graph Copyright (C) 2017 Martin Blom\n");
+	printf("graph \u14B7 Copyright (C) 2017 Martin Blom\n");
 	process_args(argc, argv);
 	load(argv[argc-1]);
 	graph_buf();

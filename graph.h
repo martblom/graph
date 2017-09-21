@@ -39,6 +39,8 @@ Copyright (C) 2017 	Martin Blom
 #include <float.h>
 #include <ctype.h>
 #include <math.h>
+#include <locale.h>
+#include <wchar.h>
 #endif
 /************************************************************************************/
 /* These are the exported functions, i.e. the API for the graph data visualizer		*/
@@ -47,7 +49,8 @@ Copyright (C) 2017 	Martin Blom
 int load(char* filename);			// loads file to buffer
 void graph_buf();					// draws graph of values in buffer
 void graph(float *buf, int size);	// draws graph of size values in buf
-void set_style(char style);			// sets the character used to plot data points
+void set_style(char style);			// sets the ASCII character used to plot data points
+void set_unistyle(char* style);		// sets the unicode character used to plot data points 
 void set_width(int s);				// sets maximum width of graph
 void set_height(int s);				// sets maximum height of graph
 void usage();						// prints how to use the program

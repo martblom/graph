@@ -20,6 +20,8 @@ Copyright (C) 2017 	Martin Blom
  	date:		September 20, 2017												   	
 *************************************************************************************/
 #include "graph.h"
+#define KILO 1000
+#define MEGA 1000000
 static const char LEGAL[] = "0123456789.-";	// legal characters in a float
 static int SCREEN_HEIGHT = 17;				// screen height
 static int SCREEN_WIDTH = 69;				// screen width
@@ -28,7 +30,8 @@ static float minval=FLT_MAX;				// minimum value, used for y-scaling
 static float* buffer=NULL;					// pointer to buffer containing data values
 static int buf_size=0;						// size of buffer;
 static char stylechar = '*';				// default data point character
-static int YMARGIN = 4;						// size of margin left of y-axis
+static char *unistylechar= "\u0FD5";		// default data point unicode character
+static int unicode = 0;						// set to 1 for unicode
 /************************************************************************************/
 /* status and error messages														*/
 /************************************************************************************/
@@ -36,7 +39,7 @@ static void print_data(float* buf)
 {
 	int i;
 	for(i=0;i<buf_size;i++)
-		printf("buf[%d]=%f, ", i,buf[i]);
+		printf("buf[%d]=%1.5f, ", i,buf[i]);
 	printf("\n");
 }
 void error()
@@ -44,14 +47,9 @@ void error()
 	usage();
 	exit(-1);
 }
-void merror()
+void merror(char* filename)
 {
-	printf("You have tried to input a file with too many values.\n");
-	printf("Unless you have an incredibly big terminal window, the precision\n");
-	printf("is totally wasted since the values are squeezed together to fit\n");
-	printf("the maximum number of characters that can be shown in the terminal.\n");
-	printf("Or you might be trying to smash the stack with too large input.\n");
-	printf("Either way, it won't work, I quit!\n");
+	printf("%s is too large, %d floats. Max size is %d\n", filename, buf_size, MEMMAX);
 	exit(-1);
 }
 void serror(char* msg, int size)
@@ -148,7 +146,7 @@ int load(char* filename)
 {
     FILE* infil;
     int i=0;
-    if(DEBUG)printf("opening file %s\n", filename);
+    printf("file: %s\n", filename);
     infil = fopen(filename, "r");
     if(!infil)
     {
@@ -158,7 +156,7 @@ int load(char* filename)
     else
     {
 		buf_size = determine_filesize(infil);
-		if(buf_size>MEMMAX)merror();
+		if(buf_size>MEMMAX)merror(filename);
 		if(buf_size<=0) f_error(filename, "no values found in file");
 		buffer = (float*)malloc(buf_size*sizeof(float));
 
@@ -250,39 +248,51 @@ static void _graph(float *buf, int size)
 	int i, k, m, origotime=1, kflag=0, mflag=0;
 	float step=1.0, xratio=1;
 	float *copy = (float*)malloc((size>SCREEN_WIDTH?SCREEN_WIDTH:size)*sizeof(float));
+
 	if(size>SCREEN_WIDTH)				// more data points than positions on x-axis?
-		xratio = squeeze(copy, SCREEN_WIDTH);	// squeeze data points to fit
+		xratio = squeeze(copy, SCREEN_WIDTH);			// squeeze data points to fit
 	else
-		for(i=0;i<size;i++)				// simple copy
+		for(i=0;i<size;i++)								// or simple copy
 			copy[i]=buf[i];
 			
-	maxval = findmax(buf,size);		// find highest value in set
-	minval = findmin(buf,size);		// find lowest value in set
+	maxval = findmax(buf,size);							// find highest value in set
+	minval = findmin(buf,size);							// find lowest value in set
 	step = (maxval-(minval>0?0:minval))/((float)SCREEN_HEIGHT);		// compute y-ratio
-	if(step>1000) kflag=1;
-	if(step>1000000) mflag=1;
+	if(step>KILO) kflag=1;
+	if(step>MEGA) mflag=1;
 	
 	printf("%4c\n",'Y');
 	for(k=0;k<=SCREEN_HEIGHT;k++)
 	{
-		if(origotime&&(maxval-step*(k))<=0)
-			{printf("%3d |", 0);}
-		else if((k%5==0)&&(fabs(maxval-step*k)>0.5)) printf("%3.0f%c|", mflag?(maxval-step*k)/1000000:kflag?(maxval-step*k)/1000:maxval-step*k, mflag?'M':kflag?'k':' ');
-		else printf("%5c", '|');
+		// ------------------------------------------------Y-axis drawing, 3 cases:
+		if(origotime&&(maxval-step*(k))<=0)				// case 1: origo, i.e. draw '0'
+			{printf("%3d |", 0);}						// and a line
+			
+		else if((k%5==0)&&(fabs(maxval-step*k)>0.5)) 	// case 2: draw label + line
+			printf("%3.0f%c|", 	mflag?(maxval-step*k)/MEGA: 
+								kflag?(maxval-step*k)/KILO:
+								maxval-step*k, 
+								mflag?'M':
+								kflag?'k':
+								' ');
+
+		else printf("%5c", '|');						// case 3: draw just the line
+		// ------------------------------------------------Plot data points top-down
 		for(i=0 ; i<SCREEN_WIDTH&&i<size; i++)
 		{
-			if(copy[i]>=(maxval-step*k) && copy[i]!=0)
-			{
-				printf("%c", stylechar);
-				copy[i] = 0;
+			if(copy[i]>=(maxval-step*k) && copy[i]!=0)	// if value is high enough
+			{											// and is not plotted before
+				if(unicode) printf("%s", unistylechar);
+				else printf("%c", stylechar);			// plot the value using
+				copy[i] = 0;							// stylechar
 			}
-			else
+			else										// if no value should be plotted
 			{
-				if(origotime&&(maxval-step*(k))<=0)printf("_");
-				else printf(" ");
+				if(origotime&&(maxval-step*(k))<=0)printf("_"); // X-axis drawing
+				else printf(" ");								// or nothing
 			}
 		}
-		if(origotime&&(maxval-step*(k))<=0)
+		if(origotime&&(maxval-step*(k))<=0)				// Draw rest of X-axis
 		{
 			for(m=i;m<SCREEN_WIDTH;m++)
 				printf("_");
@@ -291,7 +301,7 @@ static void _graph(float *buf, int size)
 		}
 		printf("\n");
 	}
-	print_xscale(xratio);
+	print_xscale(xratio);								// Draw the X-scale
 	if(DEBUG)printf("maxval=%f, SCREEN_WIDTH=%d, SCREEN_HEIGHT=%d, step=%f, xratio=%f\n", maxval, SCREEN_WIDTH, SCREEN_HEIGHT, step, xratio);
 }
 /************************************************************************************/
@@ -318,19 +328,16 @@ void graph(float *buf, int size)
 }
 /************************************************************************************/
 /* set_style:	sets the character used to represent data points					*/
-/* parameter: 	the letter input by the user to identify the char.					*/
-/*				if the character letter is unknown, the program exits				*/
+/* parameter: 	the character to be used											*/
+/*				if the character is non-standard-ASCII, it is set to '?'			*/
 /************************************************************************************/
 void set_style(char style)
 {
 	stylechar = style;
-	/*switch(style[2])
-	{
-		case 'a': stylechar='*'; break;
-		case 'd': stylechar='-'; break;
-		case 'p': stylechar='.'; break;
-		default : error();
-	}*/
+}
+void set_unistyle(char* style)
+{
+	printf("not implemented\n");
 }
 /************************************************************************************/
 /* set_width:	sets the width of the graph	(in characters)							*/
