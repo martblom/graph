@@ -53,6 +53,7 @@ void set_style(char style);			// sets the ASCII character used to plot data poin
 void set_unistyle(char* style);		// sets the unicode character used to plot data points 
 void set_width(int s);				// sets maximum width of graph
 void set_height(int s);				// sets maximum height of graph
+void set_compression(char c);		// sets compression scheme, 'a'=average, 's'=select
 void usage();						// prints how to use the program
 
 /************************************************************************************/
@@ -63,4 +64,5 @@ void merror();						// prints memory error message
 void serror(char* msg, int size);	// prints size error message
 void f_error(char* file, char* msg);// prints file error message
 void derror();						// prints data error message
+void cerror();						// prints compression error message
 /************************************************************************************/

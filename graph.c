@@ -32,13 +32,14 @@ static int buf_size=0;						// size of buffer;
 static char stylechar = '*';				// default data point character
 static char *unistylechar= "\u0FD5";		// default data point unicode character
 static int unicode = 0;						// set to 1 for unicode
+static int compression = 2;					// compression scheme, 1=average 2=select
 /************************************************************************************/
 /* status and error messages														*/
 /************************************************************************************/
-static void print_data(float* buf)
+static void print_data(float* buf, int size)
 {
 	int i;
-	for(i=0;i<buf_size;i++)
+	for(i=0;i<size;i++)
 		printf("buf[%d]=%1.5f, ", i,buf[i]);
 	printf("\n");
 }
@@ -65,6 +66,10 @@ void f_error(char* filename, char* msg)
 void derror()
 {
 	printf("Data error in file, not a float\n");
+}
+void cerror()
+{
+	printf("Compression scheme unknown, using selection as default\n");
 }
 /************************************************************************************/
 /* load_csv: 	loads values from input file to buffer								*/
@@ -145,8 +150,7 @@ static int determine_filesize(FILE* infil)
 int load(char* filename)
 {
     FILE* infil;
-    int i=0;
-    printf("file: %s\n", filename);
+    printf("file: %s ", filename);
     infil = fopen(filename, "r");
     if(!infil)
     {
@@ -161,10 +165,11 @@ int load(char* filename)
 		buffer = (float*)malloc(buf_size*sizeof(float));
 
 		load_csv(infil, filename);
-		if(DEBUG)print_data(buffer);
+		printf("%d values found.\n", buf_size);
+		if(DEBUG)print_data(buffer, buf_size);
 		fclose(infil);
     }
-    return i;
+    return buf_size;
 }
 /************************************************************************************/
 /* findmax: 	finds maximum value in buf											*/
@@ -224,8 +229,8 @@ static void print_xscale(float xratio)
 static float squeeze(float* out_buf, int desired_size)
 {
 	float ratio = (float)buf_size / (float)desired_size;
-	float average;
-	int i, k, m=0;
+	float average, i;
+	int k, m=0;
 	if(DEBUG)
 		printf("buf_size=%d, des_size=%d, ratio=%f\n", buf_size, desired_size, ratio);
 	for(i=0; i<buf_size; i+=ratio)
@@ -236,6 +241,26 @@ static float squeeze(float* out_buf, int desired_size)
 		out_buf[m++]=average/ratio;
 	}
 	if(DEBUG)printf("m=%d\n", m);
+	return ratio;
+}
+/************************************************************************************/
+/* squeeze2:	compresses buffer to fit within output buffer, using selection		*/
+/* parameters: 	out_buf 		output buffer										*/
+/* parameters: 	desired_size	size of output buffer								*/
+/* returns: 	ratio between # of data points in file and desired_size				*/
+/************************************************************************************/
+static float squeeze2(float* out_buf, int desired_size)
+{
+	float ratio = (float)buf_size / (float)desired_size;
+	float i;
+	int m=0;
+	if(DEBUG)
+		printf("buf_size=%d, des_size=%d, ratio=%f\n", buf_size, desired_size, ratio);
+	for(i=0; i<buf_size; i+=ratio)
+	{
+		out_buf[m++]=buffer[(int)i];
+	}
+	if(DEBUG)print_data(out_buf, m);
 	return ratio;
 }
 /************************************************************************************/
@@ -250,9 +275,14 @@ static void _graph(float *buf, int size)
 	float *copy = (float*)malloc((size>SCREEN_WIDTH?SCREEN_WIDTH:size)*sizeof(float));
 
 	if(size>SCREEN_WIDTH)				// more data points than positions on x-axis?
-		xratio = squeeze(copy, SCREEN_WIDTH);			// squeeze data points to fit
+	{
+		if(compression==1)
+			xratio = squeeze(copy, SCREEN_WIDTH);		// squeeze using averages...
+		else
+			xratio = squeeze2(copy, SCREEN_WIDTH);		//...or selection
+	}
 	else
-		for(i=0;i<size;i++)								// or simple copy
+		for(i=0;i<size&&i<SCREEN_WIDTH;i++)				// or simple copy
 			copy[i]=buf[i];
 			
 	maxval = findmax(buf,size);							// find highest value in set
@@ -358,4 +388,15 @@ void set_height(int s)
 {
 	if(s > HMAX) serror("height too large", s);
 	SCREEN_HEIGHT = s;
+}
+/************************************************************************************/
+/* set_compression:	sets the compression scheme for the data values					*/
+/* parameter: 	c - 'a' for average, 's' for select									*/
+/*				if c is neither 'a' or 's', select is chosen as default				*/
+/************************************************************************************/
+void set_compression(char c)
+{
+	if(c=='a') compression = 1;
+	else if(c=='s') compression = 2;
+	else cerror();
 }
