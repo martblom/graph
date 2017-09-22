@@ -37,14 +37,7 @@ static void set_size(char* arg)
 	else
 		set_height(s);
 }
-void usage()
-{
-	printf("usage:\tgraph [-sstyle] [-xsize] [-ysize] [-l] [file]\n");
-	printf("\tstyle - (a)sterisk (d)dash (p)eriod]\n");
-	printf("\t0 < xsize < %d, 0 < ysize < %d\n", WMAX, HMAX);
-	printf("\t-l prints license\n");
-	printf("\tfile should contain float values in plain text\n");
-}
+
 static void print_welcome()
 {
 	printf("graph Copyright (C) 2017 Martin Blom\n");
@@ -81,12 +74,13 @@ static void process_args(int argc, char** argv)
 							set_style(argv[i][2]); 	
 						else
 							set_unistyle(&(argv[i][2]));
-												break;
-			case 'x': set_size(argv[i]); 		break;
-			case 'y': set_size(argv[i]); 		break;
-			case 'l': print_welcome();			break;
-			case 'h': usage(); exit(0);			break;
-			default: error();
+													break;
+			case 'x': set_size(argv[i]); 			break;
+			case 'y': set_size(argv[i]); 			break;
+			case 'l': print_welcome();				break;
+			case 'c': set_compression(argv[i][2]);	break;
+			case 'h': usage(); exit(0);				break;
+			default: error();						break;
 		}
 	}
 }
@@ -95,10 +89,14 @@ static void process_args(int argc, char** argv)
 /************************************************************************************/
 int main(int argc, char** argv)
 {
+	float* buffer=NULL;
+	int size=0;
 	if(argc<2||argc>5) error();
 	printf("graph \u14B7 Copyright (C) 2017 Martin Blom\n");
 	process_args(argc, argv);
-	load(argv[argc-1]);
-	graph_buf();
+	buffer = load(argv[argc-1], &size);
+	if(DEBUG)printf("size = %d\n", size);
+	if(!buffer)printf("Memory error, buffer==NULL\n");
+	graph(buffer, size);
 	return 0;
 }

@@ -46,8 +46,7 @@ Copyright (C) 2017 	Martin Blom
 /* These are the exported functions, i.e. the API for the graph data visualizer		*/
 /* #include this file, and link the corresponding object file to use functionality	*/
 /************************************************************************************/
-int load(char* filename);			// loads file to buffer
-void graph_buf();					// draws graph of values in buffer
+float* load(char* filename, int* out_size); // loads file to buffer, returns buffer
 void graph(float *buf, int size);	// draws graph of size values in buf
 void set_style(char style);			// sets the ASCII character used to plot data points
 void set_unistyle(char* style);		// sets the unicode character used to plot data points 
