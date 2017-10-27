@@ -24,23 +24,21 @@ Copyright (C) 2017 	Martin Blom
 #define MEGA 1000000
 static const char LEGAL[] = "0123456789.-";	// legal characters in a float
 static int SCREEN_HEIGHT = 17;				// screen height
-static int SCREEN_WIDTH = 69;				// screen width
+static int SCREEN_WIDTH = 68;				// screen width
 static float maxval=FLT_MIN;				// maximum value, used for y-scaling
 static float minval=FLT_MAX;				// minimum value, used for y-scaling
-//static float* buffer=NULL;					// pointer to buffer containing data values
-//static int buf_size=0;						// size of buffer;
 static char stylechar = '*';				// default data point character
-static char *unistylechar= "\u0FD5";		// default data point unicode character
-static int unicode = 0;						// set to 1 for unicode
 static int compression = 2;					// compression scheme, 1=average 2=select
+static float USED = -M_PI;
 /************************************************************************************/
 /* status and error messages														*/
 /************************************************************************************/
 void usage()
 {
-	printf("usage:\tgraph [-sstyle] [-xsize] [-ysize] [-l] [file]\n");
+	printf("usage:\tgraph [-sstyle] [-xsize] [-ysize] [-cC] [-l] [file]\n");
 	printf("\tstyle - (a)sterisk (d)dash (p)eriod]\n");
 	printf("\t0 < xsize < %d, 0 < ysize < %d\n", WMAX, HMAX);
+	printf("\t-cC compression scheme, a for average, s for selection\n");
 	printf("\t-l prints license\n");
 	printf("\tfile should contain float values in plain text\n");
 }
@@ -69,11 +67,10 @@ void serror(char* msg, int size)
 void f_error(char* filename, char* msg)
 {
 	printf("File error in %s: %s\n", filename, msg);
-	error();
 }
-void derror()
+void derror(int no_err)
 {
-	printf("Data error in file, not a float\n");
+	printf("%d non-floats skipped ", no_err);
 }
 void cerror()
 {
@@ -94,7 +91,7 @@ static void load_csv(float* out_buf, FILE* infil, char* filename)
 	{
 		if(strchr(LEGAL, ctmp))
 		{
-			if(i>=FBUFMAX){derror();i=0;islegal=0;}
+			if(i>=FBUFMAX){i=0;islegal=0;}
 			else
 			{
 				buf[i++] = ctmp;
@@ -108,7 +105,7 @@ static void load_csv(float* out_buf, FILE* infil, char* filename)
 			{
 				buf[i]='\0';
 				out_buf[count++] = atof(buf);
-				if(DEBUG) printf("load_csv: out_buf[%d]=%f, ", count-1, out_buf[count-1]);
+				if(DEBUG) printf("out_buf[%d]=%f, ", count-1, out_buf[count-1]);
 				islegal=0;
 			}
 			i=0;
@@ -123,14 +120,14 @@ static void load_csv(float* out_buf, FILE* infil, char* filename)
 /************************************************************************************/
 static int determine_filesize(FILE* infil)
 {
-	int i=0, count=0, islegal=0;
+	int i=0, count=0, islegal=0, errors=0;
 	char ctmp, buf[FBUFMAX];
 	if(DEBUG)printf("counting values...");
 	while((ctmp=getc(infil))!=EOF)
 	{
 		if(strchr(LEGAL, ctmp))
 		{
-			if(i>=FBUFMAX){derror();i=0;islegal=0;}
+			if(i>=FBUFMAX){errors++;i=0;islegal=0;}
 			else
 			{
 				buf[i++] = ctmp;
@@ -144,9 +141,12 @@ static int determine_filesize(FILE* infil)
 				count++;
 				islegal=0;
 			}
+			else
+				errors++;
 			i=0;
 		}
 	}
+	if(errors)derror(errors);
 	if(DEBUG)printf("found %d...", count);
 	return count;
 }
@@ -173,7 +173,6 @@ float* load(char* filename, int* buf_size)
 		if(*buf_size<=0) f_error(filename, "no values found in file");
 		//if(ret_buf)free(ret_buf);
 		ret_buf = (float*)malloc(*buf_size*sizeof(float));
-
 		load_csv(ret_buf, infil, filename);
 		printf("%d values found.\n", *buf_size);
 		if(DEBUG)print_data(ret_buf, *buf_size);
@@ -273,17 +272,10 @@ static float squeeze2(float* in_buf, int orig_size, float* out_buf, int desired_
 	if(DEBUG)print_data(out_buf, m);
 	return ratio;
 }
-/************************************************************************************/
-/* _graph: 		draws a graph of data values in buf of size size					*/
-/* parameter: 	buf - the buffer containing values									*/
-/* parameter: 	size - the buffer size												*/
-/************************************************************************************/
-static void _graph(float *buf, int size)
+float compress(float* buf, int size, float* copy)
 {
-	int i, k, m, origotime=1, kflag=0, mflag=0;
-	float step=1.0, xratio=1;
-	float *copy = (float*)malloc((size>SCREEN_WIDTH?SCREEN_WIDTH:size)*sizeof(float));
-	printf("graph \u14B7 Copyright (C) 2017 Martin Blom\n");
+	float xratio=1;
+	int i;
 	if(size>SCREEN_WIDTH)				// more data points than positions on x-axis?
 	{
 		if(compression==1)
@@ -294,35 +286,44 @@ static void _graph(float *buf, int size)
 	else
 		for(i=0;(i<size)&&(i<SCREEN_WIDTH);i++)				// or simple copy
 			copy[i]=buf[i];
-
+	return xratio;
+}
+/************************************************************************************/
+/* _graph: 		draws a graph of data values in buf of size size					*/
+/* parameter: 	buf - the buffer containing values									*/
+/* parameter: 	size - the buffer size												*/
+/************************************************************************************/
+static void _graph(float *buf, int size)
+{
+	int i, k, m, origotime=1, kflag=0, mflag=0;
+	float step=1.0, xratio=1;
+	float *copy = (float*)malloc((size>SCREEN_WIDTH?SCREEN_WIDTH:size)*sizeof(float));
+	xratio = compress(buf, size, copy);					// compress if needed
 	maxval = findmax(buf,size);							// find highest value in set
 	minval = findmin(buf,size);							// find lowest value in set
-	step = (maxval-(minval>0?0:minval))/((float)SCREEN_HEIGHT);		// compute y-ratio
-
+														// compute y-ratio
+	step = ((maxval>0?maxval:0)-(minval>0?0:minval))/(float)SCREEN_HEIGHT;
+	step = (maxval-(minval>0?0:minval))/(float)SCREEN_HEIGHT;
 	printf("%4c\n",'Y');
 	for(k=0;k<=SCREEN_HEIGHT;k++)
 	{
-		kflag=(maxval-step*k)>KILO?1:0;
-		mflag=(maxval-step*k)>MEGA?1:0;
+		kflag=fabs(maxval-step*k)>KILO?1:0;					// large number (>1000)
+		mflag=fabs(maxval-step*k)>MEGA?1:0;					// larger number (>1000000)
 		// ------------------------------------------------Y-axis drawing, 3 cases:
 		if(origotime&&(maxval-step*k)<=0)				// case 1: origo, i.e. draw '0'
-			{printf("%3d |", 0);}						// and a line		
+			{printf("%3d_|", 0);}						// and a line		
 		else if((k%5==0)&&(fabs(maxval-step*k)>0.5)) 	// case 2: draw label + line
-			printf("%3.0f%c|", 	mflag?(maxval-step*k)/MEGA: 
-								kflag?(maxval-step*k)/KILO:
-								maxval-step*k, 
-								mflag?'M':
-								kflag?'k':
-								' ');
+			printf("%3.0f%c|", 	round(mflag?(maxval-step*k)/MEGA: 
+								kflag?(maxval-step*k)/KILO:	maxval-step*k), 
+								mflag?'M': kflag?'k': ' ');
 		else printf("%5c", '|');						// case 3: draw just the line
-		// ------------------------------------------------Plot data points top-down
-		for(i=0 ; i<SCREEN_WIDTH&&i<size; i++)
+
+		for(i=0 ; i<SCREEN_WIDTH&&i<size; i++)			// Plot data points top-down
 		{
-			if(copy[i]>=(maxval-step*k) && copy[i]!=0)	// if value is high enough
+			if(copy[i]>=(maxval-step*k) && copy[i]!=USED) // if value is high enough
 			{											// and is not plotted before
-				if(unicode) printf("%s", unistylechar);
-				else printf("%c", stylechar);			// plot the value using
-				copy[i] = 0;							// stylechar
+				printf("%c", stylechar);				// plot the value using stylechar
+				copy[i] = USED;							// Mark value as used
 			}
 			else										// if no value should be plotted
 			{
@@ -330,7 +331,7 @@ static void _graph(float *buf, int size)
 				else printf(" ");								// or nothing
 			}
 		}
-		if(origotime&&(maxval-step*(k))<=0)				// Draw rest of X-axis
+		if(origotime&&(maxval-step*(k))<=0)				// case 1 cont'd: rest of X-axis
 		{
 			for(m=i;m<SCREEN_WIDTH;m++)
 				printf("_");
@@ -351,6 +352,7 @@ static void _graph(float *buf, int size)
 /************************************************************************************/
 void graph(float *buf, int size)
 {
+	printf("graph \u14B7 Copyright (C) 2017 Martin Blom\n");
 	_graph(buf, size);
 }
 /************************************************************************************/
